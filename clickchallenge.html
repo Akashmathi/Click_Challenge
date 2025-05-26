@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ultimate Reaction Tester</title>
+  <style>
+    body {
+      background-color: #0077cc;
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      color: white;
+      overflow-x: hidden;
+    }
+
+    #container {
+      margin: 20px auto;
+      background-color: white;
+      width: 95%;
+      max-width: 1000px;
+      height: 600px;
+      position: relative;
+      border: 3px solid #000;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    #shape {
+      position: absolute;
+      display: none;
+      transition: all 0.25s ease;
+      cursor: pointer;
+    }
+
+    #controls {
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    select {
+      padding: 5px;
+      border-radius: 5px;
+    }
+
+    #feedback, #countdown, #streak, #timer, #leaderboard, #graph {
+      margin-top: 10px;
+      font-size: 20px;
+    }
+
+  #graph canvas {
+  background-color: white;
+  width: 100%;
+  max-width: 800px;
+  margin: 10px auto;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    @media (max-width: 600px) {
+      #container { height: 400px; }
+      #feedback, #timer, #leaderboard, #graph { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🎯 Ultimate Reaction Tester</h1>
+
+  <div id="controls">
+    <button onclick="startGame()">Start</button>
+    <button onclick="pauseGame()">Pause</button>
+    <button onclick="resetGame()">Reset</button>
+    <button onclick="togglePractice()">Practice Mode: <span id="practiceLabel">OFF</span></button>
+    Difficulty: 
+    <select id="difficulty" onchange="setDifficulty(this.value)">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+  </div>
+
+  <div id="countdown"></div>
+  <div id="timer">⏱ Time: 0.00s | Avg: 0.00s | Best: 0.00s</div>
+  <div id="streak">🔥 Streak: 0</div>
+  <div id="feedback"></div>
+
+  <div id="container">
+    <div id="shape"></div>
+  </div>
+
+  <div id="leaderboard"></div>
+  <div id="graph"><canvas id="reactionChart"></canvas></div>
+
+  <audio id="clickSound" src="https://www.soundjay.com/button/button-16.mp3" preload="auto"></audio>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const shape = document.getElementById("shape");
+    const timer = document.getElementById("timer");
+    const feedback = document.getElementById("feedback");
+    const leaderboard = document.getElementById("leaderboard");
+    const clickSound = document.getElementById("clickSound");
+    const countdownEl = document.getElementById("countdown");
+    const streakEl = document.getElementById("streak");
+    const practiceLabel = document.getElementById("practiceLabel");
+
+    const canvas = document.getElementById('reactionChart');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById("container");
+
+    let startTime, totalTime = 0, clicks = 0, streak = 0;
+    let bestTime = localStorage.getItem("bestTime") || null;
+    let isPaused = false, isPractice = false;
+    let delayRange = [1000, 3000];
+    let reactionData = [];
+
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Reaction Time (s)',
+          data: [],
+          borderColor: 'blue',
+          fill: false
+        }]
+      }
+    });
+
+    function setDifficulty(level) {
+      if (level === "easy") delayRange = [1500, 3000];
+      else if (level === "medium") delayRange = [1000, 2000];
+      else delayRange = [500, 1500];
+    }
+
+    function getRandomColor() {
+      const letters = '0123456789ABCDEF';
+      return '#' + Array.from({ length: 6 }, () => letters[Math.floor(Math.random() * 16)]).join('');
+    }
+
+    function showShape() {
+      if (isPaused) return;
+      const size = Math.random() * 100 + 50;
+      const left = Math.random() * (container.offsetWidth - size);
+      const top = Math.random() * (container.offsetHeight - size);
+      const isCircle = Math.random() > 0.5;
+
+      shape.style.width = shape.style.height = `${size}px`;
+      shape.style.left = `${left}px`;
+      shape.style.top = `${top}px`;
+      shape.style.borderRadius = isCircle ? "50%" : "0";
+      shape.style.backgroundColor = getRandomColor();
+      shape.style.display = "block";
+      shape.style.animation = "pop 0.3s";
+
+      startTime = Date.now();
+    }
+
+    function appearAfterDelay() {
+      const delay = Math.random() * (delayRange[1] - delayRange[0]) + delayRange[0];
+      setTimeout(showShape, delay);
+    }
+
+    shape.onclick = () => {
+      const reactionTime = (Date.now() - startTime) / 1000;
+      clickSound.play();
+      shape.style.display = "none";
+
+      reactionData.push(reactionTime.toFixed(2));
+      chart.data.labels.push(reactionData.length);
+      chart.data.datasets[0].data = reactionData;
+      chart.update();
+
+      if (!isPractice) {
+        totalTime += reactionTime;
+        clicks++;
+        streak++;
+        const avgTime = totalTime / clicks;
+
+        if (!bestTime || reactionTime < bestTime) {
+          bestTime = reactionTime;
+          localStorage.setItem("bestTime", bestTime);
+          celebrate();
+        }
+
+        timer.textContent = `⏱ Time: ${reactionTime.toFixed(2)}s | Avg: ${avgTime.toFixed(2)}s | Best: ${parseFloat(bestTime).toFixed(2)}s`;
+        feedback.textContent = reactionTime < 0.3 ? "💥 Ultra Fast!" :
+                               reactionTime < 0.6 ? "⚡ Great!" : "⏱ You can do better!";
+        streakEl.textContent = `🔥 Streak: ${streak}`;
+        saveScore(avgTime);
+        updateLeaderboard();
+      }
+
+      appearAfterDelay();
+    };
+
+    function startGame() {
+      resetGame();
+      isPaused = false;
+      countdown(3, () => appearAfterDelay());
+    }
+
+    function pauseGame() {
+      isPaused = true;
+      shape.style.display = "none";
+      feedback.textContent = "⏸️ Game Paused.";
+    }
+
+    function resetGame() {
+      totalTime = 0;
+      clicks = 0;
+      streak = 0;
+      reactionData = [];
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.update();
+
+      isPaused = true;
+      shape.style.display = "none";
+      feedback.textContent = "🔁 Game Reset.";
+      streakEl.textContent = `🔥 Streak: 0`;
+      timer.textContent = `⏱ Time: 0.00s | Avg: 0.00s | Best: ${bestTime ? parseFloat(bestTime).toFixed(2) + "s" : "0.00s"}`;
+    }
+
+    function togglePractice() {
+      isPractice = !isPractice;
+      practiceLabel.textContent = isPractice ? "ON" : "OFF";
+      feedback.textContent = isPractice ? "🧪 Practice Mode Active." : "";
+    }
+
+    function countdown(seconds, callback) {
+      countdownEl.textContent = seconds;
+      const interval = setInterval(() => {
+        seconds--;
+        countdownEl.textContent = seconds > 0 ? seconds : '';
+        if (seconds === 0) {
+          clearInterval(interval);
+          callback();
+        }
+      }, 1000);
+    }
+
+    function saveScore(avgTime) {
+      const history = JSON.parse(localStorage.getItem("leaderboard") || "[]");
+      history.push({ avgTime: avgTime.toFixed(2), date: new Date().toLocaleTimeString() });
+      if (history.length > 5) history.shift();
+      localStorage.setItem("leaderboard", JSON.stringify(history));
+    }
+
+    function updateLeaderboard() {
+      const scores = JSON.parse(localStorage.getItem("leaderboard") || "[]");
+      if (scores.length === 0) return;
+      leaderboard.innerHTML = "<h3>🏆 Leaderboard (Avg Times)</h3><ol>" + 
+        scores.map(score => `<li>${score.avgTime}s - ${score.date}</li>`).join('') + "</ol>";
+    }
+
+    function celebrate() {
+      const confetti = document.createElement("div");
+      confetti.innerHTML = "🎉";
+      confetti.style.position = "fixed";
+      confetti.style.fontSize = "50px";
+      confetti.style.left = Math.random() * 100 + "vw";
+      confetti.style.top = "0";
+      confetti.style.animation = "drop 1s ease-out forwards";
+      document.body.appendChild(confetti);
+      setTimeout(() => confetti.remove(), 1000);
+    }
+
+    updateLeaderboard();
+  </script>
+</body>
+</html>
